@@ -78,6 +78,43 @@ export const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+export const AmazonIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M18.99 18.23c-1.63 1.04-3.62 1.5-5.32 1.5-2.73 0-5.22-1-7.05-2.73l-.22-.22c-.1-.1-.15-.22-.15-.35 0-.13.05-.25.15-.35.2-.2.5-.2.7 0 .1.1.2.2.3.3 1.63 1.55 3.82 2.35 6.22 2.35 1.5 0 3.3-.4 4.83-1.33.2-.1.4-.1.6 0 .2.2.2.5 0 .7zM22 12c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2s10 4.48 10 10zm-2 0c0-4.42-3.58-8-8-8S4 7.58 4 12s3.58 8 8 8 8-3.58 8-8z"/>
+        <path d="M14.5 10.25c0-.41-.34-.75-.75-.75s-.75.34-.75.75v3.5c0 .41.34.75.75.75s.75-.34.75-.75v-3.5zM9.5 10.25c0-.41-.34-.75-.75-.75s-.75.34-.75.75v3.5c0 .41.34.75.75.75s.75-.34.75-.75v-3.5z"/>
+    </svg>
+);
+
+export const MetaIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2.25-6H7.5v-2h2.25V9.5c0-1.88 1.08-2.86 3.03-2.86.8 0 1.47.06 1.72.09v1.86h-1.09c-.91 0-1.09.43-1.09 1.07V12h2.22l-.28 2H13.5v5.25c-.41.07-.82.12-1.25.12s-.84-.05-1.25-.12V14z"/>
+    </svg>
+);
+
+export const NetflixIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="text-red-600" {...props}>
+        <path d="M8.28,7.03h2.3l.03,8.91l-2.33,.03ZM13.4,7.03l2.31,0V15.94l-2.31,0ZM8.28,7.03l4.63,6.23v-6.2l2.31,0V15.94H12.92L8.28,9.75v6.19H5.97V7.03h2.31Z"/>
+    </svg>
+);
+
+export const AppleIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M19.18,13.45c0,2.18-1.5,3.53-1.5,3.53s-1.23,1.8-3.18,1.8c-1.95,0-2.6-1.22-4-1.22s-2.15,1.22-3.8,1.22c-1.65,0-3.38-1.8-3.38-4.5,0-3.13,2.4-4.5,4.35-4.5,1.75,0,2.65,1.1,4,1.1s2.15-1.1,4.1-1.1c.3,0,2.03.15,3.4,2.15Zm-6.53-7.45c.88-.98,1.45-2.28,1.3-3.5-1.15.05-2.45.68-3.3,1.65-.8.9-1.55,2.25-1.4,3.5,1.25.1,2.5-.6,3.4-1.65Z"/>
+    </svg>
+);
+
+export const AtlassianIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="text-blue-600" {...props}>
+        <path d="M12.74,2.32a1.32,1.32,0,0,0-1.48,0L3,9.85l8.26,7.53a1.32,1.32,0,0,0,1.48,0L21,9.85ZM3.81,11.23,12,3.8l8.19,7.43L12,18.77Z"/>
+    </svg>
+);
+
+export const ZohoIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="text-red-500" {...props}>
+        <path d="M9.47,9.52V6.78H7.31v5.15H9.41l3.24-5.15h2.52V14h-2.1V11.2l-2.42,3.31H7.31V11.91h2.16Zm7.47-2.74h2.16v7.21H16.94Z"/>
+    </svg>
+);
+
 export const DashboardIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
