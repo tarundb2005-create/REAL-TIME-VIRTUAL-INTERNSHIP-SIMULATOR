@@ -1,131 +1,121 @@
-import type { User, InternshipDetails, Evaluation, CertificateData } from '../types';
+import { initializeApp } from 'firebase/app';
+import { 
+    getAuth, 
+    onAuthStateChanged as fbOnAuthStateChanged, 
+    createUserWithEmailAndPassword, 
+    signInWithEmailAndPassword, 
+    signInWithPopup, 
+    GoogleAuthProvider, 
+    signOut as fbSignOut, 
+    type User as FirebaseUser
+} from 'firebase/auth';
+import { getDatabase, ref, set, get, remove } from 'firebase/database';
+import { firebaseConfig } from '../firebaseConfig';
+import type { User, SavedProgress, CertificateData } from '../types';
 
-// --- MOCK DATABASE ---
-// In a real app, this would be Firestore.
-const MOCK_USERS: Record<string, User> = {};
-const MOCK_PROGRESS: Record<string, any> = {};
-const MOCK_CERTIFICATES: Record<string, CertificateData> = {};
+// Initialize Firebase and its services once at the module level
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+console.log("Firebase service initialized.");
 
-// --- MOCK AUTHENTICATION ---
-
-/**
- * Mocks the behavior of getting the currently signed-in user.
- * In a real app, this would use Firebase Auth's onAuthStateChanged listener.
- */
-export const mockGetCurrentUser = (): User | null => {
-    const userJson = sessionStorage.getItem('currentUser');
-    return userJson ? JSON.parse(userJson) : null;
+const createUserProfile = async (firebaseUser: FirebaseUser, additionalData: { name: string; university?: string; major?: string }) => {
+    const userRef = ref(db, `users/${firebaseUser.uid}`);
+    const profile: User = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email!,
+        name: additionalData.name || firebaseUser.displayName || 'New User',
+        university: additionalData.university || '',
+        major: additionalData.major || '',
+    };
+    await set(userRef, profile);
+    return profile;
 };
 
-/**
- * Mocks user sign-up.
- */
-export const mockSignUp = (name: string, university: string, major: string, email: string, pass: string): Promise<User> => {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            if (Object.values(MOCK_USERS).some(u => u.email === email)) {
-                reject(new Error("An account with this email already exists."));
-                return;
-            }
-            const uid = `uid_${Date.now()}`;
-            const newUser: User = { uid, name, university, major, email };
-            MOCK_USERS[uid] = newUser;
-            sessionStorage.setItem('currentUser', JSON.stringify(newUser));
-            resolve(newUser);
-        }, 500);
+const getUserProfile = async (uid: string): Promise<User | null> => {
+    const userRef = ref(db, `users/${uid}`);
+    const snapshot = await get(userRef);
+    if (snapshot.exists()) {
+        return snapshot.val() as User;
+    }
+    return null;
+};
+
+export const onAuthStateChanged = (callback: (user: User | null) => void): (() => void) => {
+    return fbOnAuthStateChanged(auth, async (firebaseUser) => {
+        if (firebaseUser) {
+            const userProfile = await getUserProfile(firebaseUser.uid);
+            callback(userProfile);
+        } else {
+            callback(null);
+        }
     });
 };
 
-/**
- * Mocks user sign-in.
- */
-export const mockSignIn = (email: string, pass: string): Promise<User> => {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            const user = Object.values(MOCK_USERS).find(u => u.email === email);
-            if (user) {
-                // In a real app, you'd verify the password here.
-                sessionStorage.setItem('currentUser', JSON.stringify(user));
-                resolve(user);
-            } else {
-                reject(new Error("Invalid email or password."));
-            }
-        }, 500);
-    });
+export const signUpWithEmail = async (name: string, university: string, major: string, email: string, pass: string): Promise<User> => {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+    const profile = await createUserProfile(userCredential.user, { name, university, major });
+    return profile;
 };
 
-/**
- * Mocks user sign-in with Google.
- */
-export const mockSignInWithGoogle = (): Promise<User> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const googleEmail = "intern.developer@google.com";
-            let user = Object.values(MOCK_USERS).find(u => u.email === googleEmail);
-            
-            if (!user) {
-                // First time signing in with Google, create a new user entry.
-                const uid = `uid_google_${Date.now()}`;
-                user = {
-                    uid,
-                    name: "Alex Johnson",
-                    email: googleEmail,
-                    university: "Stanford University", // Default info
-                    major: "Computer Science" // Default info
-                };
-                MOCK_USERS[uid] = user;
-            }
-
-            sessionStorage.setItem('currentUser', JSON.stringify(user));
-            resolve(user);
-        }, 500);
-    });
+export const signInWithEmail = async (email: string, pass: string): Promise<User> => {
+    const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+    const profile = await getUserProfile(userCredential.user.uid);
+    if (!profile) throw new Error("User profile not found.");
+    return profile;
 };
 
-/**
- * Mocks user sign-out.
- */
-export const mockSignOut = (): Promise<void> => {
-    return new Promise((resolve) => {
-        sessionStorage.removeItem('currentUser');
-        resolve();
-    });
+export const signInWithGoogle = async (): Promise<User> => {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    const firebaseUser = result.user;
+    
+    let profile = await getUserProfile(firebaseUser.uid);
+    if (!profile) {
+        // First time signing in with Google, create a profile
+        profile = await createUserProfile(firebaseUser, { name: firebaseUser.displayName || 'Google User' });
+    }
+    return profile;
 };
 
-
-// --- MOCK FIRESTORE ACTIONS ---
-
-/**
- * Mocks saving user progress to Firestore.
- */
-export const updateUserProgress = (uid: string, internship: InternshipDetails, evaluation: Evaluation): Promise<void> => {
-    return new Promise((resolve) => {
-        const key = `${uid}_${internship.company}_${internship.track}`;
-        MOCK_PROGRESS[key] = {
-            ...internship,
-            evaluation,
-            lastUpdated: new Date().toISOString()
-        };
-        console.log("Updated progress:", MOCK_PROGRESS[key]);
-        resolve();
-    });
+export const signOut = (): Promise<void> => {
+    return fbSignOut(auth);
 };
 
-/**
- * Mocks generating and saving a certificate to Firestore.
- */
-export const generateAndSaveCertificate = (user: User, internship: InternshipDetails, evaluation: Evaluation): Promise<CertificateData> => {
-     return new Promise((resolve) => {
-        const certificateId = `cert_${Date.now()}_${user.uid.slice(0, 4)}`;
-        const certificate: CertificateData = {
-            id: certificateId,
-            userName: user.name,
-            internshipTrack: internship.track,
-            company: internship.company,
-            completionDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-        };
-        MOCK_CERTIFICATES[certificateId] = certificate;
-        console.log("Generated certificate:", certificate);
-        resolve(certificate);
-    });
+// --- Realtime Database Functions for Internship Progress ---
+
+export const saveProgress = async (uid: string, progress: SavedProgress): Promise<void> => {
+    const progressRef = ref(db, `progress/${uid}`);
+    await set(progressRef, progress);
+};
+
+export const loadProgress = async (uid: string): Promise<SavedProgress | null> => {
+    const progressRef = ref(db, `progress/${uid}`);
+    const snapshot = await get(progressRef);
+    if (snapshot.exists()) {
+        return snapshot.val() as SavedProgress;
+    }
+    return null;
+};
+
+export const clearProgress = async (uid: string): Promise<void> => {
+    const progressRef = ref(db, `progress/${uid}`);
+    await remove(progressRef);
+};
+
+// --- Realtime Database Functions for Certificates ---
+
+export const saveCertificate = async (uid: string, certificate: CertificateData): Promise<void> => {
+    const certRef = ref(db, `certificates/${uid}/${certificate.id}`);
+    await set(certRef, certificate);
+};
+
+export const getCompletedInternships = async (uid: string): Promise<CertificateData[]> => {
+    const certsRef = ref(db, `certificates/${uid}`);
+    const snapshot = await get(certsRef);
+    if (snapshot.exists()) {
+        const data = snapshot.val();
+        return Object.values(data);
+    }
+    return [];
 };

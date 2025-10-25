@@ -1,18 +1,26 @@
-export type InternshipTrack = 'AI' | 'Data Science' | 'Software Engineering' | 'Marketing' | 'Product Management' | 'Cybersecurity' | 'UX Design';
 export type Theme = 'light' | 'dark' | 'system';
+
+export interface User {
+  uid: string;
+  name: string;
+  email: string;
+  university?: string;
+  major?: string;
+}
+
+export type InternshipTrack = 
+  | 'AI' 
+  | 'Data Science' 
+  | 'Software Engineering' 
+  | 'Marketing' 
+  | 'Product Management'
+  | 'Cybersecurity'
+  | 'UX Design';
 
 export interface InternshipDetails {
     track: InternshipTrack;
     company: string;
     description: string;
-}
-
-export interface User {
-    uid: string;
-    email: string;
-    name: string;
-    university: string;
-    major: string;
 }
 
 export interface Message {
@@ -21,55 +29,36 @@ export interface Message {
 }
 
 export interface Task {
+    id: string;
     title: string;
-    description: string;
+    description:string;
     deliverables: string[];
-}
-
-export interface PerformanceHistory {
-    taskTitle: string;
-    score: number;
 }
 
 export interface Evaluation {
     score: number;
     feedback: string;
-    history: PerformanceHistory[];
+    history: { taskTitle: string; score: number }[];
 }
 
 export interface CertificateData {
     id: string;
     userName: string;
-    internshipTrack: string;
+    internshipTrack: InternshipTrack;
     company: string;
     completionDate: string;
 }
 
-// Structure for saving progress to localStorage
 export interface SavedProgress {
-    selectedInternship: InternshipDetails;
+    internshipDetails: InternshipDetails;
     chatHistory: Message[];
     teamChatHistory: Message[];
-    currentTask: Task;
+    currentTaskIndex: number;
+    tasks: Task[];
     evaluation: Evaluation;
+    completed: boolean;
 }
 
-// Response from getInitialTask
-export interface InitialTaskResponse {
-    mentorMessage: string;
-    taskDetails: Task;
-}
-
-// Response from submitTaskAndGetResponse
-export interface SubmissionResponse {
-    mentorFeedback: string;
-    performanceScore: number;
-    mentorMessageForNextTask: string;
-    nextTask: Task;
-    isInternshipComplete?: boolean;
-}
-
-// Type for Google Search grounding results
 export interface GroundingChunk {
     web: {
         uri: string;

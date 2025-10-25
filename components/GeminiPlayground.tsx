@@ -3,7 +3,7 @@ import { getGroundedResponse, analyzeImage, getComplexResponse, generateVideoFro
 import type { GroundingChunk } from '../types';
 // FIX: LoadingSpinner is a default export, so it should be imported without curly braces.
 import LoadingSpinner from './LoadingSpinner';
-import { BrainIcon, ChatBubbleIcon, DashboardIcon, ImageIcon, SendIcon, VideoCameraIcon } from './icons';
+import { BrainIcon, ChatBubbleIcon, ImageIcon, SendIcon, VideoCameraIcon, ArrowLeftIcon } from './icons';
 
 type PlaygroundTab = 'chat' | 'image' | 'reasoning' | 'video';
 
@@ -29,18 +29,18 @@ const GeminiPlayground: React.FC<{ onBackToDashboard: () => void }> = ({ onBackT
 
     return (
         <div className="flex-1 flex flex-col p-4 sm:p-6 lg:p-8 gap-6 bg-gray-100 dark:bg-gray-900 overflow-y-auto">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+                 <button
+                    onClick={onBackToDashboard}
+                    className="flex-shrink-0 p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                    aria-label="Back to dashboard"
+                >
+                    <ArrowLeftIcon className="h-6 w-6" />
+                </button>
                 <div>
                      <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">Gemini Playground</h1>
                      <p className="text-md text-gray-600 dark:text-gray-400">Explore the powerful features of the Gemini API.</p>
                 </div>
-                <button
-                    onClick={onBackToDashboard}
-                    className="flex items-center p-3 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                >
-                    <DashboardIcon className="h-6 w-6" />
-                    <span className="ml-2 font-medium hidden sm:inline">Dashboard</span>
-                </button>
             </div>
 
             <div className="border-b border-gray-200 dark:border-gray-700">

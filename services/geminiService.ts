@@ -1,250 +1,51 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import type { InternshipDetails, Task, Message, InitialTaskResponse, SubmissionResponse, GroundingChunk } from '../types';
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import type { GroundingChunk, InternshipDetails, Message, Task } from '../types';
 
-// This is a placeholder for your actual Gemini API key.
-// In a real application, this should be stored securely and not hardcoded.
-const GEMINI_API_KEY = "AIzaSyCBd1ww6r3et54g2n4dztQBcWkg-IVdTBY";
+// The API key is injected by the environment.
+const getAi = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-if (!GEMINI_API_KEY) {
-    throw new Error("Gemini API key is not set.");
-}
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-const initialTaskSchema = {
-    type: Type.OBJECT,
-    properties: {
-        mentorMessage: {
-            type: Type.STRING,
-            description: "A welcoming message for the new intern. Introduce yourself as their manager and set a positive tone for the internship."
-        },
-        taskDetails: {
-            type: Type.OBJECT,
-            properties: {
-                title: { type: Type.STRING, description: "A concise title for the first task." },
-                description: { type: Type.STRING, description: "A detailed description of the task, including context, goals, and why it's important." },
-                deliverables: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                    description: "A list of specific, actionable items the intern needs to produce."
-                }
-            },
-            required: ['title', 'description', 'deliverables']
-        }
-    },
-    required: ['mentorMessage', 'taskDetails']
-};
-
-const submissionResponseSchema = {
-    type: Type.OBJECT,
-    properties: {
-        mentorFeedback: {
-            type: Type.STRING,
-            description: "Constructive, specific, and encouraging feedback on the intern's submission. Point out strengths and areas for improvement."
-        },
-        performanceScore: {
-            type: Type.INTEGER,
-            description: "An integer score from 0 to 100 evaluating the submission based on clarity, completeness, and adherence to the task."
-        },
-        mentorMessageForNextTask: {
-            type: Type.STRING,
-            description: "A transitional message that introduces the next task, linking it to the previous one if possible. If this is the final task, this message should congratulate the intern on completing their internship."
-        },
-        nextTask: {
-            type: Type.OBJECT,
-            properties: {
-                title: { type: Type.STRING, description: "A concise title for the next task. If the internship is complete, provide a title like 'Internship Complete!'." },
-                description: { type: Type.STRING, description: "A detailed description of the next task. If the internship is complete, this can be a summary of their achievements." },
-                deliverables: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                    description: "A list of specific deliverables for the next task. If the internship is complete, this can be an empty array."
-                }
-            },
-             required: ['title', 'description', 'deliverables']
-        },
-        isInternshipComplete: {
-            type: Type.BOOLEAN,
-            description: "A boolean flag. Set this to true ONLY if this is the fifth task submission, marking the end of the internship. Otherwise, it should be false or omitted."
-        }
-    },
-     required: ['mentorFeedback', 'performanceScore', 'mentorMessageForNextTask', 'nextTask']
-};
-
-
-export const getInitialTask = async (internship: InternshipDetails): Promise<InitialTaskResponse> => {
-    const prompt = `Act as an AI Mentor simulating a Senior Manager for the ${internship.track} team at ${internship.company}.
-Your persona is:
-- **Encouraging & Supportive**: You are their direct manager and you are genuinely excited to have them on the team. Your tone is welcoming, positive, and motivating.
-- **Professional & Clear**: You provide clear, well-defined tasks and articulate the business impact and context behind the work.
-- **Company-Centric**: You embody the culture of ${internship.company}. For Google, this means being data-driven, innovative, and collaborative. Naturally weave in terms like "Googler," "Noogler" (for the new intern), and talk about achieving "impact at scale."
-
-My role: I am a new intern on your team, excited to get started.
-
-Your task is to craft a warm welcome and assign my very first task. This task must be realistic and typical for a new ${internship.track} intern at ${internship.company}. For a Data Science intern at Google, this could involve analyzing user engagement data for a product like YouTube or Google Search.
-
-Your response must be in JSON, following the required schema. The 'mentorMessage' should be a personal welcome, and 'taskDetails' should be comprehensive (title, description, deliverables).`;
-
+export const getGroundedResponse = async (prompt: string): Promise<{ text: string; sources: GroundingChunk[] }> => {
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: initialTaskSchema,
-                temperature: 0.7,
-            }
-        });
-
-        const jsonString = response.text.trim();
-        const parsedResponse = JSON.parse(jsonString);
-        return parsedResponse as InitialTaskResponse;
-
-    } catch (error) {
-        console.error("Gemini API error in getInitialTask:", error);
-        throw new Error("Failed to fetch initial task from AI.");
-    }
-};
-
-export const submitTaskAndGetResponse = async (
-    internship: InternshipDetails,
-    task: Task,
-    submission: string,
-    chatHistory: Message[]
-): Promise<SubmissionResponse> => {
-    
-    const formattedHistory = chatHistory.map(m => `${m.author}: ${m.text}`).join('\n');
-    const taskNumber = (chatHistory.filter(m => m.author === 'user').length); // This is the Nth submission
-
-    const prompt = `Act as an AI Mentor simulating a Senior Manager for the ${internship.track} team at ${internship.company}.
-Your persona is:
-- **Encouraging & Constructive**: Your goal is to build the intern's confidence while guiding them toward excellence.
-- **Professional & In-depth**: Your evaluation is specific and actionable. Avoid generic praise. Refer directly to parts of the submission.
-- **Company-Centric**: Embody the culture of ${internship.company}. For Google, emphasize data-driven decisions and frame feedback in a way that encourages a "growth mindset."
-
-My role: I am your intern, submitting my work for task number ${taskNumber} (out of 5).
-
-Current Task: ${task.title}
-My Submission:
----
-${submission}
----
-Previous conversation history:
----
-${formattedHistory}
----
-
-Your task is to evaluate my work and assign the next task.
-1.  **Evaluate my submission**:
-    - Craft the 'mentorFeedback'. Crucially, **always** start your feedback by highlighting specific strengths in their submission. After praising their work, gently introduce areas for improvement as 'next steps' or 'ways to level up'. For example: "This is a great start! Your analysis of the user-data is solid. To take this further, consider segmenting by region to see if we can spot any trends."
-    - Provide a fair 'performanceScore' (0-100).
-2.  **Assign the next task**: Provide a transitional 'mentorMessageForNextTask' and the 'nextTask' details. The next task should be a logical progression from the current one.
-3.  **Check for completion**: If this is the 5th task submission, set 'isInternshipComplete' to true. The 'nextTask' should be a concluding summary and the 'mentorMessageForNextTask' a congratulatory message on successfully completing the internship. Otherwise, 'isInternshipComplete' must be false or omitted.
-
-Your response must be in JSON, following the required schema.`;
-    
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: submissionResponseSchema,
-                temperature: 0.6,
-            }
-        });
-
-        const jsonString = response.text.trim();
-        const parsedResponse = JSON.parse(jsonString);
-        return parsedResponse as SubmissionResponse;
-
-    } catch (error) {
-        console.error("Gemini API error in submitTaskAndGetResponse:", error);
-        throw new Error("Failed to process submission with AI.");
-    }
-};
-
-export const getColleagueResponse = async (
-    internship: InternshipDetails,
-    task: Task,
-    userMessage: string
-): Promise<string> => {
-    const prompt = `You are an AI simulating a team member for an intern.
-Your Name: Alex
-Your Role: A helpful Software Engineer working on the same product team.
-Your Persona: You are a friendly, knowledgeable, and collaborative colleague. You are NOT the intern's manager. You are busy with your own work but happy to help when you can. Your tone should be slightly more informal and peer-to-peer than a manager's. You should NOT give evaluative feedback or scores. You provide pointers, suggestions, links to (mock) internal documentation, code snippets, or explanations.
-
-Intern's Role: ${internship.track} at ${internship.company}
-Intern's Current Task: "${task.title}"
-
-The intern's question/message to you is:
----
-${userMessage}
----
-
-Your task is to provide a helpful response from your perspective as a peer colleague. Keep your response concise and to the point. Frame your answer as if you're chatting in a team channel.`;
-    
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                temperature: 0.8,
-                maxOutputTokens: 250,
-            }
-        });
-
-        return response.text.trim();
-
-    } catch (error) {
-        console.error("Gemini API error in getColleagueResponse:", error);
-        throw new Error("Failed to get response from colleague AI.");
-    }
-};
-
-// --- Playground Functions ---
-
-export const getGroundedResponse = async (prompt: string): Promise<{ text: string, sources: GroundingChunk[] }> => {
-    try {
-        const response = await ai.models.generateContent({
+        const ai = getAi();
+        const response: GenerateContentResponse = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: prompt,
             config: {
-                tools: [{googleSearch: {}}],
+                tools: [{ googleSearch: {} }],
             },
         });
+
         const text = response.text;
-        const rawSources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        
-        // FIX: The GroundingChunk type from the Gemini API has optional `uri` and `title` properties, 
-        // while the custom app type in `types.ts` requires them. This filters out any sources that 
-        // don't have the required properties and maps the result to conform to the stricter app type.
-        const sources: GroundingChunk[] = rawSources
-            .filter(s => s.web && s.web.uri && s.web.title)
-            .map(s => ({
-                web: {
-                    uri: s.web!.uri!,
-                    title: s.web!.title!,
-                },
-            }));
-            
+        const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+        const sources: GroundingChunk[] =
+            groundingMetadata?.groundingChunks
+                ?.filter((chunk: any) => chunk.web?.uri && chunk.web?.title)
+                .map((chunk: any) => ({
+                    web: {
+                        uri: chunk.web.uri,
+                        title: chunk.web.title,
+                    },
+                })) || [];
+
         return { text, sources };
+
     } catch (error) {
-        console.error("Gemini API error in getGroundedResponse:", error);
-        throw new Error("Failed to get grounded response from AI.");
+        console.error("Error in getGroundedResponse:", error);
+        throw new Error("Failed to get grounded response from Gemini.");
     }
 };
 
-export const analyzeImage = async (prompt: string, imageBase64: string, mimeType: string): Promise<string> => {
+export const analyzeImage = async (prompt: string, base64Data: string, mimeType: string): Promise<string> => {
     try {
+        const ai = getAi();
         const imagePart = {
             inlineData: {
-                mimeType,
-                data: imageBase64,
+                data: base64Data,
+                mimeType: mimeType,
             },
         };
         const textPart = { text: prompt };
-        
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: { parts: [imagePart, textPart] },
@@ -252,44 +53,44 @@ export const analyzeImage = async (prompt: string, imageBase64: string, mimeType
 
         return response.text;
     } catch (error) {
-        console.error("Gemini API error in analyzeImage:", error);
-        throw new Error("Failed to analyze image with AI.");
+        console.error("Error in analyzeImage:", error);
+        throw new Error("Failed to analyze image with Gemini.");
     }
 };
 
 export const getComplexResponse = async (prompt: string): Promise<string> => {
     try {
+        const ai = getAi();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-pro",
             contents: prompt,
             config: {
-                thinkingConfig: { thinkingBudget: 32768 }
-            },
+                 // Using the "pro" model automatically enables more complex reasoning.
+            }
         });
         return response.text;
     } catch (error) {
-        console.error("Gemini API error in getComplexResponse:", error);
-        throw new Error("Failed to get complex response from AI.");
+        console.error("Error in getComplexResponse:", error);
+        throw new Error("Failed to get complex response from Gemini.");
     }
 };
 
 export const generateVideoFromImage = async (
     prompt: string,
-    imageBase64: string,
+    base64Data: string,
     mimeType: string,
     aspectRatio: '16:9' | '9:16',
-    onProgress: (status: string) => void
+    setStatus: (status: string) => void
 ): Promise<string> => {
     try {
-        // Use a new GenAI instance for Veo models as per API key requirements
-        const videoAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+        const ai = getAi();
 
-        onProgress("Starting video generation... This may take a few minutes.");
-        let operation = await videoAI.models.generateVideos({
+        setStatus("Initializing video generation...");
+        let operation = await ai.models.generateVideos({
             model: 'veo-3.1-fast-generate-preview',
             prompt: prompt,
             image: {
-                imageBytes: imageBase64,
+                imageBytes: base64Data,
                 mimeType: mimeType,
             },
             config: {
@@ -299,28 +100,103 @@ export const generateVideoFromImage = async (
             }
         });
 
+        setStatus("Processing video... This can take a few minutes.");
+        let checks = 0;
         while (!operation.done) {
-            onProgress("Processing video... Checking status in 10 seconds.");
-            await new Promise(resolve => setTimeout(resolve, 10000));
-            operation = await videoAI.operations.getVideosOperation({ operation: operation });
-        }
-
-        onProgress("Video generation complete!");
-        const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-        if (!downloadLink) {
-            throw new Error("Video generation succeeded but no download link was found.");
+            await new Promise(resolve => setTimeout(resolve, 10000)); // Poll every 10 seconds
+            operation = await ai.operations.getVideosOperation({ operation: operation });
+            checks++;
+            setStatus(`Processing video... (Status check ${checks})`);
         }
         
-        // The response.body contains the MP4 bytes. You must append an API key when fetching from the download link.
-        const response = await fetch(`${downloadLink}&key=${GEMINI_API_KEY}`);
-        const blob = await response.blob();
-        return URL.createObjectURL(blob);
+        setStatus("Finalizing video...");
+        const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
 
-    } catch (error) {
-        console.error("Gemini API error in generateVideoFromImage:", error);
-        if (error instanceof Error && error.message.includes("Requested entity was not found.")) {
-             throw new Error("Video generation failed. This might be an API key issue. Please try re-selecting your API key.");
+        if (!downloadLink) {
+            throw new Error("Video generation completed, but no download link was found.");
         }
-        throw new Error("Failed to generate video with AI.");
+        
+        return `${downloadLink}&key=${process.env.API_KEY}`;
+
+    } catch (error: any) {
+        console.error("Error in generateVideoFromImage:", error);
+        if (error.message?.includes("not found") || error.message?.includes("permission") || error.message?.includes("entity")) {
+            throw new Error("Video generation failed. This might be an API key issue. Please try selecting your API key again.");
+        }
+        throw new Error("Failed to generate video with Gemini.");
     }
+};
+
+// --- Mocked functions for internship simulation ---
+
+export const getInternshipScenario = async (details: InternshipDetails): Promise<{ firstTask: Task; initialEvaluation: any }> => {
+    console.log("Mocking internship scenario generation for", details);
+    await new Promise(res => setTimeout(res, 1500)); // Simulate network delay
+    return {
+        firstTask: {
+            id: 'task_1',
+            title: `Onboarding: ${details.track} at ${details.company}`,
+            description: `Welcome to your first day! Your first task is to review the company's internal documentation on our coding standards and recent projects related to ${details.track}. Then, introduce yourself to the team in the chat.`,
+            deliverables: [
+                "Acknowledge you have read the documentation.",
+                "Send a brief introduction message in the team chat, mentioning your background."
+            ],
+        },
+        initialEvaluation: {
+            score: 0,
+            feedback: "Welcome! Your journey starts now. Complete your first task to get your first evaluation.",
+            history: [],
+        }
+    }
+};
+
+export const evaluateSubmission = async (
+    submission: string,
+    task: Task,
+    internshipDetails: InternshipDetails,
+    history: { taskTitle: string; score: number }[]
+): Promise<{evaluation: any, nextTask: Task | null, mentorResponse: string, isComplete: boolean}> => {
+    console.log("Mocking submission evaluation for", submission, task);
+    await new Promise(res => setTimeout(res, 2000));
+
+    const score = 75 + Math.floor(Math.random() * 20);
+    const feedback = `Good work on "${task.title}". You demonstrated a solid understanding of the requirements. For your next submission, try to be more concise in your explanations. Overall, a great start!`;
+    
+    const currentTaskNumber = history.length + 1;
+    const isComplete = currentTaskNumber >= 5;
+
+    if (isComplete) {
+         return {
+            evaluation: { score, feedback },
+            nextTask: null,
+            mentorResponse: `Excellent work on the final task, "${task.title}"! Your final score is ${score}. ${feedback}. You have successfully completed all the tasks for this internship. Congratulations! A certificate has been generated for you.`,
+            isComplete: true,
+        };
+    }
+    
+    const mentorResponse = `Thanks for your submission on "${task.title}". I've reviewed it and your performance score is ${score}. My feedback is: ${feedback}. Your next task is ready.`;
+
+    const nextTask: Task = {
+        id: `task_${currentTaskNumber + 1}`,
+        title: `Task ${currentTaskNumber + 1}: Advanced ${internshipDetails.track}`,
+        description: `This is a new challenging task based on your progress. For this task, you will need to ${['analyze a dataset', 'refactor a module', 'design a new component', 'draft a marketing brief', 'outline a feature spec'][currentTaskNumber]}.`,
+        deliverables: ["A detailed report.", "A code sample or presentation slides."]
+    };
+
+    return {
+        evaluation: { score, feedback },
+        nextTask,
+        mentorResponse,
+        isComplete: false,
+    };
+};
+
+export const getColleagueResponse = async (
+    userMessage: string,
+    teamChatHistory: Message[],
+    internshipDetails: InternshipDetails
+): Promise<string> => {
+    console.log("Mocking colleague response to:", userMessage);
+    await new Promise(res => setTimeout(res, 1000));
+    return "That's a great question! I think you should check the internal wiki for documentation on that. Or maybe ask our mentor if you're still stuck. Good luck!";
 };

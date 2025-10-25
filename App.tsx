@@ -1,350 +1,310 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import type { InternshipDetails, Message, Task, Evaluation, User, CertificateData, SavedProgress, Theme } from './types';
-import { getInitialTask, submitTaskAndGetResponse, getColleagueResponse } from './services/geminiService';
-import { mockSignIn, mockSignUp, mockSignOut, mockGetCurrentUser, generateAndSaveCertificate, updateUserProgress, mockSignInWithGoogle } from './services/firebaseService';
+import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged, signInWithEmail, signUpWithEmail, signInWithGoogle, signOut, getCompletedInternships, saveCertificate } from './services/firebaseService';
+import { getInternshipScenario, evaluateSubmission, getColleagueResponse } from './services/geminiService';
 import { saveInternshipProgress, loadInternshipProgress, clearInternshipProgress } from './services/progressService';
-
-
+import type { User, Theme, InternshipDetails, Message, Task, Evaluation, CertificateData, SavedProgress } from './types';
+import AuthPage from './components/AuthPage';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import ChatWindow from './components/ChatWindow';
-import TaskCard from './components/TaskCard';
-import EvaluationPanel from './components/EvaluationPanel';
 import InternshipSelection from './components/InternshipSelection';
-import LoadingSpinner from './components/LoadingSpinner';
-import AuthPage from './components/AuthPage';
 import Dashboard from './components/Dashboard';
 import Certificate from './components/Certificate';
-import TeamChatPanel from './components/TeamChatPanel';
 import GeminiPlayground from './components/GeminiPlayground';
+import LearningHub from './components/LearningHub';
+import LoadingSpinner from './components/LoadingSpinner';
 
-type AppView = 'AUTH' | 'DASHBOARD' | 'SELECTION' | 'SIMULATION' | 'CERTIFICATE' | 'PLAYGROUND';
+type AppView = 'dashboard' | 'selection' | 'certificate' | 'playground' | 'learningHub';
 
 const App: React.FC = () => {
-    const [view, setView] = useState<AppView>('AUTH');
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [selectedInternship, setSelectedInternship] = useState<InternshipDetails | null>(null);
+    // --- State Management ---
+    const [user, setUser] = useState<User | null>(null);
+    const [authLoading, setAuthLoading] = useState(true);
+    const [authError, setAuthError] = useState<string | null>(null);
+
+    const [internshipDetails, setInternshipDetails] = useState<InternshipDetails | null>(null);
+    const [currentTask, setCurrentTask] = useState<Task | null>(null);
     const [chatHistory, setChatHistory] = useState<Message[]>([]);
     const [teamChatHistory, setTeamChatHistory] = useState<Message[]>([]);
-    const [currentTask, setCurrentTask] = useState<Task | null>(null);
     const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
-    const [generatedCertificate, setGeneratedCertificate] = useState<CertificateData | null>(null);
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [isTeamChatLoading, setIsTeamChatLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-    const [hasSavedProgress, setHasSavedProgress] = useState<boolean>(false);
-    const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'system');
+    const [completedInternships, setCompletedInternships] = useState<CertificateData[]>([]);
+    
+    const [isMentorLoading, setIsMentorLoading] = useState(false);
+    const [isColleagueLoading, setIsColleagueLoading] = useState(false);
+    const [isStartingInternship, setIsStartingInternship] = useState(false);
+    
+    const [appView, setAppView] = useState<AppView>('selection');
+    const [theme, setTheme] = useState<Theme>('system');
 
+    // --- Effects ---
+    // Handle auth state changes
     useEffect(() => {
-        const root = window.document.documentElement;
-        const isDark =
-          theme === 'dark' ||
-          (theme === 'system' &&
-            window.matchMedia('(prefers-color-scheme: dark)').matches);
-        root.classList.toggle('dark', isDark);
-        localStorage.setItem('theme', theme);
-    }, [theme]);
+        const unsubscribe = onAuthStateChanged(async (currentUser) => {
+            setUser(currentUser);
+            if (currentUser) {
+                // User is signed in, load their data from the database
+                const savedProgress = await loadInternshipProgress(currentUser.uid);
+                const completed = await getCompletedInternships(currentUser.uid);
+                setCompletedInternships(completed);
 
-    useEffect(() => {
-        const user = mockGetCurrentUser();
-        if (user) {
-            setCurrentUser(user);
-            if (loadInternshipProgress(user.uid)) {
-                setHasSavedProgress(true);
+                if (savedProgress) {
+                    setInternshipDetails(savedProgress.internshipDetails);
+                    setChatHistory(savedProgress.chatHistory);
+                    setTeamChatHistory(savedProgress.teamChatHistory);
+                    setCurrentTask(savedProgress.tasks[savedProgress.currentTaskIndex]);
+                    setEvaluation(savedProgress.evaluation);
+                    setAppView(savedProgress.completed ? 'certificate' : 'dashboard');
+                } else {
+                    setAppView('selection');
+                }
             }
-            setView('DASHBOARD');
-        } else {
-            setView('AUTH');
-        }
-        setIsLoading(false);
+            setAuthLoading(false);
+        });
+        return () => unsubscribe();
     }, []);
 
-    const handleThemeToggle = () => {
-        setTheme(prevTheme => {
-            if (prevTheme === 'light') return 'dark';
-            if (prevTheme === 'dark') return 'system';
-            return 'light';
-        });
-    };
-
-    const handleSignUp = async (name: string, university: string, major: string, email: string, pass: string) => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const user = await mockSignUp(name, university, major, email, pass);
-            setCurrentUser(user);
-            setHasSavedProgress(false); // No progress for new user
-            setView('DASHBOARD');
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    
-    const handleSignIn = async (email: string, pass: string) => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const user = await mockSignIn(email, pass);
-            setCurrentUser(user);
-            if (loadInternshipProgress(user.uid)) {
-                setHasSavedProgress(true);
-            }
-            setView('DASHBOARD');
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleSignInWithGoogle = async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const user = await mockSignInWithGoogle();
-            setCurrentUser(user);
-             if (loadInternshipProgress(user.uid)) {
-                setHasSavedProgress(true);
+    // Handle theme changes
+    useEffect(() => {
+        const applyTheme = () => {
+            if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
             } else {
-                setHasSavedProgress(false);
+                document.documentElement.classList.remove('dark');
             }
-            setView('DASHBOARD');
+        };
+        applyTheme();
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        mediaQuery.addEventListener('change', applyTheme);
+        return () => mediaQuery.removeEventListener('change', applyTheme);
+    }, [theme]);
+
+
+    // Auto-save progress to the database
+    useEffect(() => {
+        if (user && internshipDetails && currentTask && evaluation && appView === 'dashboard') {
+            const progress: SavedProgress = {
+                internshipDetails,
+                chatHistory,
+                teamChatHistory,
+                currentTaskIndex: evaluation.history.length,
+                tasks: [currentTask], // In a real app, you'd store all tasks
+                evaluation,
+                completed: false
+            };
+            saveInternshipProgress(user.uid, progress);
+        }
+    }, [chatHistory, teamChatHistory, currentTask, evaluation, internshipDetails, user, appView]);
+
+    // --- Auth Handlers ---
+    const onSignIn = async (email: string, pass: string) => {
+        setAuthLoading(true); setAuthError(null);
+        try {
+            await signInWithEmail(email, pass);
         } catch (err: any) {
-             setError(err.message);
+            setAuthError(err.message);
         } finally {
-            setIsLoading(false);
+            setAuthLoading(false);
         }
     };
 
-    const handleSignOut = async () => {
-        await mockSignOut();
-        setCurrentUser(null);
-        setView('AUTH');
-        // Reset state
-        setSelectedInternship(null);
+    const onSignUp = async (name: string, university: string, major: string, email: string, pass: string) => {
+        setAuthLoading(true); setAuthError(null);
+        try {
+            await signUpWithEmail(name, university, major, email, pass);
+        } catch (err: any) {
+            setAuthError(err.message);
+        } finally {
+            setAuthLoading(false);
+        }
+    };
+
+    const onSignInWithGoogle = async () => {
+        setAuthLoading(true); setAuthError(null);
+        try {
+            await signInWithGoogle();
+        } catch (err: any) {
+            setAuthError(err.message);
+        } finally {
+            setAuthLoading(false);
+        }
+    };
+
+    const onSignOut = async () => {
+        await signOut();
+        setUser(null);
+        // Reset all app state
+        setInternshipDetails(null);
+        setCurrentTask(null);
         setChatHistory([]);
         setTeamChatHistory([]);
-        setCurrentTask(null);
         setEvaluation(null);
-        setGeneratedCertificate(null);
-        setHasSavedProgress(false);
+        setAppView('selection');
     };
 
-    const handleResumeInternship = useCallback(() => {
-        if (!currentUser) return;
-        const savedProgress = loadInternshipProgress(currentUser.uid);
-        if (savedProgress) {
-            setSelectedInternship(savedProgress.selectedInternship);
-            setChatHistory(savedProgress.chatHistory);
-            setTeamChatHistory(savedProgress.teamChatHistory || []);
-            setCurrentTask(savedProgress.currentTask);
-            setEvaluation(savedProgress.evaluation);
-            setView('SIMULATION');
-        }
-    }, [currentUser]);
 
-    const startInternship = useCallback(async (internship: InternshipDetails) => {
-        if(currentUser) {
-            clearInternshipProgress(currentUser.uid);
-            setHasSavedProgress(false);
-        }
-        setSelectedInternship(internship);
-        setView('SIMULATION');
-        setIsLoading(true);
-        setError(null);
+    // --- Internship Logic Handlers ---
+    const handleSelectInternship = async (details: InternshipDetails) => {
+        if (!user) return;
+        setIsStartingInternship(true);
         try {
-            const initialData = await getInitialTask(internship);
-            const initialChat: Message[] = [{ author: 'mentor', text: initialData.mentorMessage }];
-            const initialTeamChat: Message[] = [{ author: 'colleague', text: `Hey, welcome to the ${internship.company} team! I'm Alex, a Software Engineer on the project. Feel free to ping me here if you have any questions. Good luck with your first task!` }];
-            const initialEval: Evaluation = {
-                score: 0,
-                feedback: "Welcome! Your performance evaluation will appear here once you submit your first task.",
-                history: []
+            const scenario = await getInternshipScenario(details);
+            setInternshipDetails(details);
+            setCurrentTask(scenario.firstTask);
+            setEvaluation(scenario.initialEvaluation);
+            setChatHistory([{ author: 'mentor', text: `Welcome to your internship at ${details.company}! I'm your mentor. Your first task is ready for you. Let me know if you have any questions.` }]);
+            setTeamChatHistory([{author: 'colleague', text: "Hey, welcome to the team! Glad to have you here. Let us know if you need anything."}]);
+            setAppView('dashboard');
+            await clearInternshipProgress(user.uid); // Clear any old progress from DB
+        } catch (error) {
+            console.error("Failed to start internship:", error);
+        } finally {
+            setIsStartingInternship(false);
+        }
+    };
+
+    const handleSendMessageToMentor = async (message: string) => {
+        if (!user || !currentTask || !internshipDetails || !evaluation) return;
+        const newUserMessage: Message = { author: 'user', text: message };
+        setChatHistory(prev => [...prev, newUserMessage]);
+        setIsMentorLoading(true);
+
+        try {
+            const { evaluation: newEvaluation, nextTask, mentorResponse, isComplete } = await evaluateSubmission(message, currentTask, internshipDetails, evaluation.history);
+            
+            const newMentorMessage: Message = { author: 'mentor', text: mentorResponse };
+            setChatHistory(prev => [...prev, newMentorMessage]);
+
+            const updatedEvaluation = {
+                score: newEvaluation.score,
+                feedback: newEvaluation.feedback,
+                history: [...evaluation.history, { taskTitle: currentTask.title, score: newEvaluation.score }]
             };
-            setChatHistory(initialChat);
-            setTeamChatHistory(initialTeamChat);
-            setCurrentTask(initialData.taskDetails);
-            setEvaluation(initialEval);
+            setEvaluation(updatedEvaluation);
             
-            if (currentUser) {
-                const progress: SavedProgress = {
-                    selectedInternship: internship,
-                    chatHistory: initialChat,
-                    teamChatHistory: initialTeamChat,
-                    currentTask: initialData.taskDetails,
-                    evaluation: initialEval
+            if (isComplete) {
+                const certData: CertificateData = {
+                    id: `cert-${user.uid.slice(0, 8)}-${Date.now()}`,
+                    userName: user.name,
+                    internshipTrack: internshipDetails.track,
+                    company: internshipDetails.company,
+                    completionDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
                 };
-                saveInternshipProgress(currentUser.uid, progress);
-                setHasSavedProgress(true);
+                
+                // Save certificate to DB and clear progress
+                await saveCertificate(user.uid, certData);
+                await clearInternshipProgress(user.uid);
+                
+                setCompletedInternships(prev => [...prev, certData]);
+                setAppView('certificate');
+
+            } else if (nextTask) {
+                setCurrentTask(nextTask);
             }
 
-        } catch (err) {
-            console.error("Error starting internship:", err);
-            setError("Failed to start the simulation. Please try again.");
-            setView('SELECTION');
+        } catch (error) {
+            console.error(error);
+            const errorMessage: Message = { author: 'mentor', text: "Sorry, I encountered an error. Please try again." };
+            setChatHistory(prev => [...prev, errorMessage]);
         } finally {
-            setIsLoading(false);
-        }
-    }, [currentUser]);
-
-    const completeInternship = useCallback(async (finalEvaluation: Evaluation) => {
-        if (!currentUser || !selectedInternship) return;
-        setIsLoading(true);
-        try {
-            const certificate = await generateAndSaveCertificate(currentUser, selectedInternship, finalEvaluation);
-            setGeneratedCertificate(certificate);
-            clearInternshipProgress(currentUser.uid);
-            setHasSavedProgress(false);
-            setView('CERTIFICATE');
-        } catch (err) {
-            console.error("Error generating certificate:", err);
-            setError("There was an issue generating your certificate. Please return to the dashboard.");
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentUser, selectedInternship]);
-    
-    const handleSendMessage = useCallback(async (userInput: string) => {
-        if (!userInput.trim() || !selectedInternship || !currentTask || !currentUser) return;
-
-        const userMessage: Message = { author: 'user', text: userInput };
-        const newChatHistory = [...chatHistory, userMessage];
-        setChatHistory(newChatHistory);
-        setIsLoading(true);
-        setError(null);
-
-        try {
-            const response = await submitTaskAndGetResponse(selectedInternship, currentTask, userInput, chatHistory);
-            
-            const mentorMessage: Message = { author: 'mentor', text: `${response.mentorFeedback}\n\n${response.mentorMessageForNextTask}` };
-            const updatedChatHistory = [...newChatHistory, mentorMessage];
-            setChatHistory(updatedChatHistory);
-            
-            const nextTask = response.nextTask;
-            setCurrentTask(nextTask);
-            
-            let finalEvaluation: Evaluation | null = null;
-            setEvaluation(prev => {
-                const newHistoryEntry = prev ? { taskTitle: currentTask.title, score: response.performanceScore } : { taskTitle: currentTask.title, score: response.performanceScore };
-                const newHistory = prev ? [...prev.history, newHistoryEntry] : [newHistoryEntry];
-                if (newHistory.length > 5) newHistory.shift();
-
-                finalEvaluation = {
-                    score: response.performanceScore,
-                    feedback: response.mentorFeedback,
-                    history: newHistory
-                };
-                return finalEvaluation;
-            });
-
-            if (finalEvaluation) {
-                await updateUserProgress(currentUser.uid, selectedInternship, finalEvaluation);
-                 const progress: SavedProgress = {
-                    selectedInternship,
-                    chatHistory: updatedChatHistory,
-                    teamChatHistory,
-                    currentTask: nextTask,
-                    evaluation: finalEvaluation
-                };
-                saveInternshipProgress(currentUser.uid, progress);
-                setHasSavedProgress(true);
-            }
-            
-            if (response.isInternshipComplete && finalEvaluation) {
-                await completeInternship(finalEvaluation);
-            }
-
-        } catch (err) {
-            console.error("Error submitting task:", err);
-            const errorMessage = "Sorry, I encountered an issue processing your submission. Please try again.";
-            setError(errorMessage);
-            setChatHistory(prev => [...prev, {author: 'mentor', text: errorMessage}]);
-        } finally {
-            setIsLoading(false);
-        }
-
-    }, [selectedInternship, currentTask, chatHistory, teamChatHistory, currentUser, completeInternship]);
-
-    const handleSendTeamMessage = useCallback(async (userInput: string) => {
-        if (!userInput.trim() || !selectedInternship || !currentTask) return;
-        
-        const userMessage: Message = { author: 'user', text: userInput };
-        const newTeamChatHistory = [...teamChatHistory, userMessage];
-        setTeamChatHistory(newTeamChatHistory);
-        setIsTeamChatLoading(true);
-
-        try {
-            const responseText = await getColleagueResponse(selectedInternship, currentTask, userInput);
-            const colleagueMessage: Message = { author: 'colleague', text: responseText };
-            setTeamChatHistory(prev => [...prev, colleagueMessage]);
-
-        } catch (err) {
-             console.error("Error getting colleague response:", err);
-             const errorMessage = "Sorry, Alex seems to be busy right now. Try again in a bit.";
-             setTeamChatHistory(prev => [...prev, {author: 'colleague', text: errorMessage}]);
-        } finally {
-            setIsTeamChatLoading(false);
-        }
-
-    }, [selectedInternship, currentTask, teamChatHistory]);
-
-    const renderContent = () => {
-        if (isLoading && view !== 'SIMULATION' && view !== 'PLAYGROUND') {
-            return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner /></div>;
-        }
-
-        switch(view) {
-            case 'AUTH':
-                return <AuthPage onSignIn={handleSignIn} onSignUp={handleSignUp} onSignInWithGoogle={handleSignInWithGoogle} error={error} isLoading={isLoading} />;
-            case 'DASHBOARD':
-                return currentUser && <Dashboard 
-                                        user={currentUser} 
-                                        onStartInternship={() => setView('SELECTION')}
-                                        onResumeInternship={handleResumeInternship}
-                                        onGoToPlayground={() => setView('PLAYGROUND')}
-                                        hasSavedProgress={hasSavedProgress}
-                                       />;
-            case 'SELECTION':
-                return <InternshipSelection onSelect={startInternship} error={error} />;
-            case 'PLAYGROUND':
-                return <GeminiPlayground onBackToDashboard={() => setView('DASHBOARD')} />;
-            case 'SIMULATION':
-                return (
-                    <div className="flex flex-1 overflow-hidden">
-                        <Sidebar selectedInternship={selectedInternship} onBackToDashboard={() => setView('DASHBOARD')}/>
-                        <main className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 overflow-hidden">
-                            <div className="lg:col-span-2 flex flex-col h-full overflow-hidden">
-                               <ChatWindow
-                                   chatHistory={chatHistory}
-                                   onSendMessage={handleSendMessage}
-                                   isLoading={isLoading}
-                               />
-                            </div>
-                            <div className="flex flex-col gap-4 overflow-y-auto">
-                                {currentTask && <TaskCard task={currentTask} />}
-                                <TeamChatPanel 
-                                    chatHistory={teamChatHistory} 
-                                    onSendMessage={handleSendTeamMessage} 
-                                    isLoading={isTeamChatLoading} 
-                                />
-                                {evaluation && <EvaluationPanel evaluation={evaluation} />}
-                            </div>
-                        </main>
-                    </div>
-                );
-            case 'CERTIFICATE':
-                return generatedCertificate && <Certificate certificate={generatedCertificate} onBackToDashboard={() => setView('DASHBOARD')} />;
-            default:
-                return <AuthPage onSignIn={handleSignIn} onSignUp={handleSignUp} onSignInWithGoogle={handleSignInWithGoogle} error={error} isLoading={isLoading} />;
+            setIsMentorLoading(false);
         }
     };
+
+    const handleSendMessageToColleague = async (message: string) => {
+        const newUserMessage: Message = { author: 'user', text: message };
+        setTeamChatHistory(prev => [...prev, newUserMessage]);
+        setIsColleagueLoading(true);
+
+        try {
+            const responseText = await getColleagueResponse(message, teamChatHistory, internshipDetails!);
+            const newColleagueMessage: Message = { author: 'colleague', text: responseText };
+             setTimeout(() => { // Simulate delay
+                setTeamChatHistory(prev => [...prev, newColleagueMessage]);
+            }, 1200);
+        } catch (error) {
+            console.error(error);
+            const errorMessage: Message = { author: 'colleague', text: "Oops, my connection dropped. What was that?" };
+            setTeamChatHistory(prev => [...prev, errorMessage]);
+        } finally {
+            setIsColleagueLoading(false);
+        }
+    };
+    
+    const handleBackToDashboard = () => setAppView(internshipDetails ? 'dashboard' : 'selection');
+    
+    const handleBackToSelection = async () => {
+        if (!user) return;
+        await clearInternshipProgress(user.uid);
+        setInternshipDetails(null);
+        setCurrentTask(null);
+        setChatHistory([]);
+        setTeamChatHistory([]);
+        setEvaluation(null);
+        setAppView('selection');
+    };
+
+
+    const handleThemeToggle = () => {
+        if (theme === 'system') setTheme('light');
+        else if (theme === 'light') setTheme('dark');
+        else setTheme('system');
+    };
+
+    // --- Render Logic ---
+    if (authLoading) {
+        return <div className="h-screen w-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900"><LoadingSpinner /></div>;
+    }
+
+    if (!user) {
+        return <AuthPage onSignIn={onSignIn} onSignUp={onSignUp} onSignInWithGoogle={onSignInWithGoogle} error={authError} isLoading={false} />;
+    }
+    
+    const certificateData: CertificateData | null = (appView === 'certificate' && internshipDetails) ? {
+        id: `cert-${user.uid.slice(0,8)}-${internshipDetails.company.replace(/\s/g, '')}`,
+        userName: user.name,
+        internshipTrack: internshipDetails.track,
+        company: internshipDetails.company,
+        completionDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    } : null;
+
 
     return (
-        <div className="h-screen w-full flex flex-col font-sans bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-            {currentUser && <Header user={currentUser} onSignOut={handleSignOut} theme={theme} onThemeToggle={handleThemeToggle} />}
-            {renderContent()}
+        <div className={`flex h-screen font-sans bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100`}>
+            {internshipDetails && <Sidebar selectedInternship={internshipDetails} onBackToDashboard={handleBackToSelection} />}
+
+            <main className="flex-1 flex flex-col">
+                <Header user={user} onSignOut={onSignOut} theme={theme} onThemeToggle={handleThemeToggle} />
+                
+                {isStartingInternship && (
+                    <div className="flex-1 flex flex-col items-center justify-center p-4">
+                        <LoadingSpinner />
+                        <p className="mt-4 text-lg font-semibold">Configuring your virtual workspace...</p>
+                    </div>
+                )}
+                
+                {!isStartingInternship && (
+                    <>
+                        {appView === 'selection' && <InternshipSelection onSelect={handleSelectInternship} error={null} />}
+                        {appView === 'dashboard' && currentTask && evaluation && (
+                            <Dashboard
+                                internshipDetails={internshipDetails!}
+                                currentTask={currentTask}
+                                chatHistory={chatHistory}
+                                teamChatHistory={teamChatHistory}
+                                evaluation={evaluation}
+                                isMentorLoading={isMentorLoading}
+                                isColleagueLoading={isColleagueLoading}
+                                onSendMessageToMentor={handleSendMessageToMentor}
+                                onSendMessageToColleague={handleSendMessageToColleague}
+                                onViewPlayground={() => setAppView('playground')}
+                                onViewLearningHub={() => setAppView('learningHub')}
+                            />
+                        )}
+                        {appView === 'certificate' && certificateData && <Certificate certificate={certificateData} onBackToDashboard={handleBackToSelection} />}
+                        {appView === 'playground' && <GeminiPlayground onBackToDashboard={handleBackToDashboard} />}
+                        {appView === 'learningHub' && <LearningHub onBackToDashboard={handleBackToDashboard} />}
+                    </>
+                )}
+            </main>
         </div>
     );
 };
