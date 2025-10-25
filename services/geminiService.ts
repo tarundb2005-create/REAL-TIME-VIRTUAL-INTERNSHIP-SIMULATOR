@@ -1,6 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { InternshipDetails, Task, Message, InitialTaskResponse, SubmissionResponse } from '../types';
+import type { InternshipDetails, Task, Message, InitialTaskResponse, SubmissionResponse, GroundingChunk } from '../types';
 
+// This is a placeholder for your actual Gemini API key.
+// In a real application, this should be stored securely and not hardcoded.
 const GEMINI_API_KEY = "AIzaSyCBd1ww6r3et54g2n4dztQBcWkg-IVdTBY";
 
 if (!GEMINI_API_KEY) {
@@ -197,5 +199,128 @@ Your task is to provide a helpful response from your perspective as a peer colle
     } catch (error) {
         console.error("Gemini API error in getColleagueResponse:", error);
         throw new Error("Failed to get response from colleague AI.");
+    }
+};
+
+// --- Playground Functions ---
+
+export const getGroundedResponse = async (prompt: string): Promise<{ text: string, sources: GroundingChunk[] }> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                tools: [{googleSearch: {}}],
+            },
+        });
+        const text = response.text;
+        const rawSources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        
+        // FIX: The GroundingChunk type from the Gemini API has optional `uri` and `title` properties, 
+        // while the custom app type in `types.ts` requires them. This filters out any sources that 
+        // don't have the required properties and maps the result to conform to the stricter app type.
+        const sources: GroundingChunk[] = rawSources
+            .filter(s => s.web && s.web.uri && s.web.title)
+            .map(s => ({
+                web: {
+                    uri: s.web!.uri!,
+                    title: s.web!.title!,
+                },
+            }));
+            
+        return { text, sources };
+    } catch (error) {
+        console.error("Gemini API error in getGroundedResponse:", error);
+        throw new Error("Failed to get grounded response from AI.");
+    }
+};
+
+export const analyzeImage = async (prompt: string, imageBase64: string, mimeType: string): Promise<string> => {
+    try {
+        const imagePart = {
+            inlineData: {
+                mimeType,
+                data: imageBase64,
+            },
+        };
+        const textPart = { text: prompt };
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [imagePart, textPart] },
+        });
+
+        return response.text;
+    } catch (error) {
+        console.error("Gemini API error in analyzeImage:", error);
+        throw new Error("Failed to analyze image with AI.");
+    }
+};
+
+export const getComplexResponse = async (prompt: string): Promise<string> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro",
+            contents: prompt,
+            config: {
+                thinkingConfig: { thinkingBudget: 32768 }
+            },
+        });
+        return response.text;
+    } catch (error) {
+        console.error("Gemini API error in getComplexResponse:", error);
+        throw new Error("Failed to get complex response from AI.");
+    }
+};
+
+export const generateVideoFromImage = async (
+    prompt: string,
+    imageBase64: string,
+    mimeType: string,
+    aspectRatio: '16:9' | '9:16',
+    onProgress: (status: string) => void
+): Promise<string> => {
+    try {
+        // Use a new GenAI instance for Veo models as per API key requirements
+        const videoAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+        onProgress("Starting video generation... This may take a few minutes.");
+        let operation = await videoAI.models.generateVideos({
+            model: 'veo-3.1-fast-generate-preview',
+            prompt: prompt,
+            image: {
+                imageBytes: imageBase64,
+                mimeType: mimeType,
+            },
+            config: {
+                numberOfVideos: 1,
+                resolution: '720p',
+                aspectRatio: aspectRatio
+            }
+        });
+
+        while (!operation.done) {
+            onProgress("Processing video... Checking status in 10 seconds.");
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            operation = await videoAI.operations.getVideosOperation({ operation: operation });
+        }
+
+        onProgress("Video generation complete!");
+        const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+        if (!downloadLink) {
+            throw new Error("Video generation succeeded but no download link was found.");
+        }
+        
+        // The response.body contains the MP4 bytes. You must append an API key when fetching from the download link.
+        const response = await fetch(`${downloadLink}&key=${GEMINI_API_KEY}`);
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+
+    } catch (error) {
+        console.error("Gemini API error in generateVideoFromImage:", error);
+        if (error instanceof Error && error.message.includes("Requested entity was not found.")) {
+             throw new Error("Video generation failed. This might be an API key issue. Please try re-selecting your API key.");
+        }
+        throw new Error("Failed to generate video with AI.");
     }
 };

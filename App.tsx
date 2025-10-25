@@ -16,8 +16,9 @@ import AuthPage from './components/AuthPage';
 import Dashboard from './components/Dashboard';
 import Certificate from './components/Certificate';
 import TeamChatPanel from './components/TeamChatPanel';
+import GeminiPlayground from './components/GeminiPlayground';
 
-type AppView = 'AUTH' | 'DASHBOARD' | 'SELECTION' | 'SIMULATION' | 'CERTIFICATE';
+type AppView = 'AUTH' | 'DASHBOARD' | 'SELECTION' | 'SIMULATION' | 'CERTIFICATE' | 'PLAYGROUND';
 
 const App: React.FC = () => {
     const [view, setView] = useState<AppView>('AUTH');
@@ -290,7 +291,7 @@ const App: React.FC = () => {
     }, [selectedInternship, currentTask, teamChatHistory]);
 
     const renderContent = () => {
-        if (isLoading && view !== 'SIMULATION') {
+        if (isLoading && view !== 'SIMULATION' && view !== 'PLAYGROUND') {
             return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner /></div>;
         }
 
@@ -302,10 +303,13 @@ const App: React.FC = () => {
                                         user={currentUser} 
                                         onStartInternship={() => setView('SELECTION')}
                                         onResumeInternship={handleResumeInternship}
+                                        onGoToPlayground={() => setView('PLAYGROUND')}
                                         hasSavedProgress={hasSavedProgress}
                                        />;
             case 'SELECTION':
                 return <InternshipSelection onSelect={startInternship} error={error} />;
+            case 'PLAYGROUND':
+                return <GeminiPlayground onBackToDashboard={() => setView('DASHBOARD')} />;
             case 'SIMULATION':
                 return (
                     <div className="flex flex-1 overflow-hidden">

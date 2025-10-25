@@ -68,3 +68,11 @@ export interface SubmissionResponse {
     nextTask: Task;
     isInternshipComplete?: boolean;
 }
+
+// Type for Google Search grounding results
+export interface GroundingChunk {
+    web: {
+        uri: string;
+        title: string;
+    };
+}

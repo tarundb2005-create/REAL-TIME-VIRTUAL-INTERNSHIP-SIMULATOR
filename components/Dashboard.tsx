@@ -5,10 +5,11 @@ interface DashboardProps {
     user: User;
     onStartInternship: () => void;
     onResumeInternship: () => void;
+    onGoToPlayground: () => void;
     hasSavedProgress: boolean;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ user, onStartInternship, onResumeInternship, hasSavedProgress }) => {
+const Dashboard: React.FC<DashboardProps> = ({ user, onStartInternship, onResumeInternship, onGoToPlayground, hasSavedProgress }) => {
     return (
         <div className="flex-1 flex flex-col items-center justify-center p-8 bg-gray-100 dark:bg-gray-900">
             <div className="w-full max-w-4xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-10 text-center">
@@ -57,6 +58,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onStartInternship, onResume
                             Start a New Internship
                         </button>
                     )}
+                     <div className="relative flex py-2 items-center w-full max-w-xs">
+                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                        <span className="flex-shrink mx-4 text-gray-500 dark:text-gray-400 text-sm">OR</span>
+                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                    </div>
+                     <button
+                        onClick={onGoToPlayground}
+                        className="w-full max-w-xs px-6 py-3 text-md font-medium text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/50 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-300"
+                    >
+                        Explore Gemini Playground
+                    </button>
                 </div>
             </div>
         </div>

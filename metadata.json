@@ -1,5 +1,7 @@
 {
-  "name": "Real-Time Virtual Internship Simulator",
+  "name": "ZAS - Virtual Internship Simulator",
   "description": "An AI-powered platform that replicates the experience of working in top companies. Engage in realistic, hands-on projects designed to mirror real-world challenges with real-time feedback from AI-generated mentors.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }
