@@ -1,11 +1,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { InternshipDetails, Task, Message, InitialTaskResponse, SubmissionResponse } from '../types';
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set.");
+const GEMINI_API_KEY = "AIzaSyCBd1ww6r3et54g2n4dztQBcWkg-IVdTBY";
+
+if (!GEMINI_API_KEY) {
+    throw new Error("Gemini API key is not set.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 const initialTaskSchema = {
     type: Type.OBJECT,
